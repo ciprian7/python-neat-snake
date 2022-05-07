@@ -1,40 +1,90 @@
 import numpy as np
+import random
+import string
+
+globalId = 1
 
 
 class Network:
-    def __init__(self):
-        inputSize = 4
-        hiddenSize = 6
-        outputSize = 3
-        self.weights = [
-            np.random.randn(inputSize, hiddenSize),
-            np.random.randn(hiddenSize, hiddenSize),
-            np.random.randn(hiddenSize, outputSize)
-        ]
+    def __init__(self, weights=None, biases=None):
+        self.inputSize = 9
+        self.hiddenSize = [27, 18]
+        self.outputSize = 3
 
-        self.biases = [
-            np.zeros((1, hiddenSize)),
-            np.zeros((1, hiddenSize)),
-            np.zeros((1, outputSize))
-        ]
+        if len(self.hiddenSize) == 1:
+            self.topology = [self.inputSize, self.hiddenSize[0], self.outputSize]
+
+        else:
+            if len(self.hiddenSize) == 2:
+                self.topology = [self.inputSize, self.hiddenSize[0], self.hiddenSize[1], self.outputSize]
+
+
+        if weights is None:
+            if len(self.hiddenSize) == 1:
+                self.weights = [
+                    np.random.randn(self.inputSize, self.hiddenSize[0]),
+                    np.random.randn(self.hiddenSize[0], self.hiddenSize[0]),
+                    np.random.randn(self.hiddenSize[0], self.outputSize)
+                ]
+            else:
+                if len(self.hiddenSize) == 2:
+                    self.weights = [
+                        np.random.randn(self.inputSize, self.hiddenSize[0]),
+                        np.random.randn(self.hiddenSize[0], self.hiddenSize[0]),
+                        np.random.randn(self.hiddenSize[0], self.hiddenSize[1]),
+                        np.random.randn(self.hiddenSize[1], self.outputSize)
+                    ]
+
+        else:
+            self.weights = weights
+
+        if biases is None:
+            if len(self.hiddenSize) == 1:
+                self.biases = [
+                    np.random.rand(1, self.hiddenSize[0]),
+                    np.random.rand(1, self.hiddenSize[0]),
+                    np.random.rand(1, self.outputSize)
+                ]
+            else:
+                if len(self.hiddenSize) == 2:
+                    self.biases = [
+                        np.random.rand(1, self.hiddenSize[0]),
+                        np.random.rand(1, self.hiddenSize[0]),
+                        np.random.rand(1, self.hiddenSize[1]),
+                        np.random.rand(1, self.outputSize)
+                    ]
+
+        else:
+            self.biases = biases
 
         self.score = 0
+        self.length = 0
+        self.steps = None
+
+        self.id = (''.join(random.choice(string.ascii_letters) for i in range(10)))
 
     def think(self, input):
-        z1 = np.array(input).dot(self.weights[0]) + self.biases[0]
-        a1 = np.tanh(z1)
+        z = np.array(input).dot(self.weights[0]) + self.biases[0]
+        a = np.tanh(z)
 
-        z2 = a1.dot(self.weights[1]) + self.biases[1]
-        a2 = np.tanh(z2)
+        for i in range(1, len(self.topology)):
+            z = \
+                a.dot(self.weights[i])\
+                + self.biases[i]
+            a = np.tanh(z)
 
-        z3 = a2.dot(self.weights[2]) + self.biases[2]
-
-        maxIndex = np.argmax(z3[0])
+        maxIndex = np.argmax(z[0])
 
         return maxIndex
 
     def setScore(self, score):
         self.score = score
 
+    def setLength(self, length):
+        self.length = length
+
+    def setSteps(self, steps):
+        self.steps = steps
+
     def __str__(self):
-        return "Score: " + str(self.score)
+        return "Score: " + str(self.score) + "Length: " + str(self.length)

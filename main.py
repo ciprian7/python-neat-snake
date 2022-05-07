@@ -4,13 +4,13 @@ import pygame
 import random
 import math
 from Network import Network
+import numpy as np
 
 width = 490
 height = 490
 dotSize = 10
 speed = 60
 
-window = pygame.display.set_mode((width + dotSize, height + dotSize))
 
 def distance(_from, _to):
     return math.sqrt((_from[0] - _to[0]) ** 2 + (_from[1] - _to[1]) ** 2)
@@ -28,6 +28,8 @@ class Snake:
         self.body = [self.position]
         self.direction = 'RIGHT'
         self.changeDirectionTo = self.direction
+        self.color = random.choices(range(256), k=3)
+        self.stepsWithoutFood = 0
 
     def changeDirTo(self, dir):
         if dir == 'RIGHT' and not self.direction == 'LEFT':
@@ -77,6 +79,8 @@ class Snake:
                 return
 
     def move(self, foodPos):
+        self.stepsWithoutFood += 1
+        self.steps += 1
         if self.direction == 'RIGHT':
             self.position[0] += dotSize
         if self.direction == 'LEFT':
@@ -87,6 +91,7 @@ class Snake:
             self.position[1] += dotSize
         self.body.insert(0, list(self.position))
         if self.position == foodPos:
+            self.stepsWithoutFood = 0
             return 1
         else:
             self.body.pop()
@@ -112,14 +117,44 @@ class Snake:
         self.radians = math.atan2(foodPos[1] - self.position[1], foodPos[0] - self.position[0])
 
         collisions = self.checkBodyCollisions()
-        input = [0, 0, 0, 0]
+        foodCheck = [x / width for x in self.checkFood(foodPos)]
+        relCollisions = [x / width for x in self.relativeCollisions(foodPos)]
 
-        input[0] = collisions[0]
-        input[1] = collisions[1]
-        input[2] = collisions[2]
-        input[3] = math.sin(math.radians(self.radians))
+        input = [
+            int(collisions[0]),
+            int(collisions[1]),
+            int(collisions[2]),
+
+            foodCheck[0],
+            foodCheck[1],
+            foodCheck[2],
+
+            relCollisions[0] / width,
+            relCollisions[1] / width,
+            relCollisions[2] / width
+        ]
+        # input[3] = self.angle(foodPos)
 
         return input
+
+    def angle(self, foodPos):
+        appleVector = np.array(foodPos) - np.array(self.position)
+        snakeVector = np.array(self.position) - np.array(self.position)
+
+        appleNormVector = np.linalg.norm(appleVector)
+        snakeNormVector = np.linalg.norm(snakeVector)
+        if appleNormVector == 0:
+            appleNormVector = 10
+        if snakeNormVector == 0:
+            snakeNormVector = 10
+
+        appleDirectionNormalized = appleVector / appleNormVector
+        snkaeDirectionNormalized = snakeVector / snakeNormVector
+        angle = math.atan2(appleDirectionNormalized[1] * snkaeDirectionNormalized[0] -
+                           appleDirectionNormalized[0] * snkaeDirectionNormalized[1],
+                           appleDirectionNormalized[1] * snkaeDirectionNormalized[1] +
+                           appleDirectionNormalized[0] * snkaeDirectionNormalized[0]) / math.pi
+        return angle
 
     def getRadians(self):
         return self.radians
@@ -151,6 +186,24 @@ class Snake:
                 return collisions
 
         return collisions
+
+    def wall(self, position):
+        x = position[0]
+        y = position[1]
+        return x * dotSize >= width or \
+               y * dotSize >= height or \
+               x <= 0 or \
+               y <= 0
+
+    def distWalls(self):
+        x = self.position[0]
+        y = self.position[1]
+        return [
+            distance(self.position, (x, 0)),
+            distance(self.position, (x, height)),
+            distance(self.position, (0, y)),
+            distance(self.position, (width, y))
+        ]
 
     def northBodyCheck(self):
         x = self.position[0]
@@ -196,8 +249,152 @@ class Snake:
 
         return hasBody
 
-    def think(self, foodPos):
-        input = self.getInput(foodPos)
+    def northdistCheck(self, foodPos):
+        x = self.position[0]
+        y = self.position[1]
+        dist = min(self.distWalls())
+
+        for block in self.body:
+            if y > block[1] and x == block[0]:
+                otherDist = distance(self.position, block)
+                dist = dist if dist <= otherDist else otherDist
+
+        return dist
+
+    def southdistCheck(self, foodPos):
+        x = self.position[0]
+        y = self.position[1]
+        dist = min(self.distWalls())
+
+        for block in self.body:
+            if y < block[1] and x == block[0]:
+                otherDist = distance(self.position, block)
+                dist = dist if dist <= otherDist else otherDist
+
+        return dist
+
+    def eastdistCheck(self, foodPos):
+        x = self.position[0]
+        y = self.position[1]
+        dist = min(self.distWalls())
+
+        for block in self.body:
+            if y == block[1] and x < block[0]:
+                otherDist = distance(self.position, block)
+                dist = dist if dist <= otherDist else otherDist
+
+        return dist
+
+    def westdistCheck(self, foodPos):
+        x = self.position[0]
+        y = self.position[1]
+        dist = min(self.distWalls())
+
+        for block in self.body:
+            if y == block[1] and x > block[0]:
+                otherDist = distance(self.position, block)
+                dist = dist if dist <= otherDist else otherDist
+
+        return dist
+
+    def checkFood(self, foodPos):
+        x = self.position[0]
+        y = self.position[1]
+        dist = distance(self.position, foodPos)
+
+        match self.direction:
+            case 'UP':
+                forward = [x, y - 1]
+                left = [x - 1, y]
+                right = [x + 1, y]
+                distances = [
+                    distance(forward, foodPos),
+                    distance(left, foodPos),
+                    distance(right, foodPos)
+                ]
+                collisions = [
+                    distances[0] if distances[0] < dist else -1,
+                    distances[1] if distances[1] < dist else -1,
+                    distances[2] if distances[2] < dist else -1
+                ]
+                return collisions
+            case 'DOWN':
+                forward = [x, y + 1]
+                left = [x + 1, y]
+                right = [x - 1, y]
+                distances = [
+                    distance(forward, foodPos),
+                    distance(left, foodPos),
+                    distance(right, foodPos)
+                ]
+                collisions = [
+                    distances[0] if distances[0] < dist else -1,
+                    distances[1] if distances[1] < dist else -1,
+                    distances[2] if distances[2] < dist else -1
+                ]
+                return collisions
+            case 'LEFT':
+                forward = [x - 1, y]
+                left = [x, y + 1]
+                right = [x, y - 1]
+                distances = [
+                    distance(forward, foodPos),
+                    distance(left, foodPos),
+                    distance(right, foodPos)
+                ]
+                collisions = [
+                    distances[0] if distances[0] < dist else -1,
+                    distances[1] if distances[1] < dist else -1,
+                    distances[2] if distances[2] < dist else -1
+                ]
+                return collisions
+            case 'RIGHT':
+                forward = [x + 1, y]
+                left = [x, y - 1]
+                right = [x, y + 1]
+                distances = [
+                    distance(forward, foodPos),
+                    distance(left, foodPos),
+                    distance(right, foodPos)
+                ]
+                collisions = [
+                    distances[0] if distances[0] < dist else -1,
+                    distances[1] if distances[1] < dist else -1,
+                    distances[2] if distances[2] < dist else -1
+                ]
+
+                return collisions
+            case _:
+                return None
+
+    def relativeCollisions(self, foodPos):
+        match self.direction:
+            case 'UP':
+                return [
+                    self.northdistCheck(foodPos),
+                    self.westdistCheck(foodPos),
+                    self.eastdistCheck(foodPos)
+                ]
+            case 'DOWN':
+                return [
+                    self.southdistCheck(foodPos),
+                    self.eastdistCheck(foodPos),
+                    self.westdistCheck(foodPos)
+                ]
+            case 'LEFT':
+                return [
+                    self.westdistCheck(foodPos),
+                    self.southdistCheck(foodPos),
+                    self.northdistCheck(foodPos)
+                ]
+            case 'RIGHT':
+                return [
+                    self.eastdistCheck(foodPos),
+                    self.northdistCheck(foodPos),
+                    self.southdistCheck(foodPos)
+                ]
+            case _:
+                return None
 
 
 class FoodSpawer:
@@ -217,13 +414,15 @@ class FoodSpawer:
     def setFoodOnScreen(self, b):
         self.isFoodOnScreen = b
 
+
 class Game:
-    def __init__(self):
+    def __init__(self, brain=None):
         self.snake = Snake()
         self.foodSpawner = FoodSpawer()
-        self.brain = Network()
-
-
+        if brain is None:
+            self.brain = Network()
+        else:
+            self.brain = brain
 
     def interpret(self, output, foodPos):
         distThen = distance(self.snake.getHeadPos(), foodPos)
@@ -249,85 +448,31 @@ class Game:
             self.snake.score -= 1.5
 
         if self.snake.position == foodPos:
-            self.snake.score += self.snake.score * (self.snake.size() + 1)
+            self.snake.score += abs(self.snake.score) * (math.sqrt(self.snake.size()) + 1)
             self.foodSpawner.setFoodOnScreen(False)
 
-        if self.snake.score < - 40:
+        if self.snake.score <= - 40 or self.snake.stepsWithoutFood > 100:
             self.snake.dead = True
 
+        if self.snake.dead is True:
+            del self
+
     def gameOver(self):
-        print("qqq")
+        pass
 
     def exit(self):
         pygame.quit()
 
-    def drawText(self,string, position):
+    def drawText(self, string, position, window):
         font = pygame.font.SysFont("arial", 16)
         text = font.render(str(string), True, (255, 255, 153))
         window.blit(text, position)
 
-    def drawLine(self,start, end, window):
+    def drawLine(self, start, end, window):
         pygame.draw.line(window, (255, 0, 0), start, end)
-
-    def play(self):
-        pygame.display.set_caption('Snake')
-        fps = pygame.time.Clock()
-        while not self.snake.dead:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.exit()
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_d:
-                        self.snake.changeDirTo('RIGHT')
-                    if event.key == pygame.K_w:
-                        self.snake.changeDirTo('UP')
-                    if event.key == pygame.K_s:
-                        self.snake.changeDirTo('DOWN')
-                    if event.key == pygame.K_a:
-                        self.snake.changeDirTo('LEFT')
-            foodPos = self.foodSpawner.spawnFood()
-            window.fill(pygame.Color(0, 0, 0))
-            for pos in self.snake.getBody():
-                pygame.draw.rect(window, pygame.Color(0, 225, 0),
-                                 pygame.Rect(pos[0], pos[1], dotSize, dotSize))
-            pygame.draw.rect(window, pygame.Color(225, 0, 0),
-                             pygame.Rect(foodPos[0], foodPos[1], dotSize, dotSize))
-            if self.snake.checkCollision() == 1:
-                self.snake.dead = True
-                self.gameOver()
-            pygame.display.set_caption('Snake | Score : ' + str(self.snake.score))
-
-            input = self.snake.getInput(foodPos)
-            output = self.brain.think(input)
-            self.interpret(output, foodPos)
-            radians = self.snake.getRadians()
-            headPos = self.snake.getHeadPos()
-            startX = headPos[0] / dotSize
-            startY = headPos[1] / dotSize
-            headPos = self.snake.getHeadPos()
-            foodDist = distance(headPos, foodPos)
-            endX = startX + round(math.cos(radians)) * foodDist
-            endY = startY + round(math.sin(radians)) * foodDist
-            self.drawLine([startX * dotSize, startY * dotSize], [endX * dotSize, endY * dotSize], window)
-
-            obst = "Obstalce: "
-            if input[0] == 1:
-                obst += "AHEAD "
-            if input[1] == 1:
-                obst += "LEFT "
-            if input[2] == 1:
-                obst += "RIGHT "
-
-            self.snake.steps += 1
-            self.drawText(obst, [0, 10])
-            self.drawText("Steps: " + str(self.snake.steps), [0, 30])
-            self.drawText("Score: " + str(self.snake.score), [0, 50])
-
-            pygame.display.flip()
-            fps.tick(speed)
-
-        print("Score %2.f | Length: %d | Steps: %d" % (self.snake.score, self.snake.size(), self.snake.steps))
 
     def getBrain(self):
         self.brain.setScore(self.snake.score)
+        self.brain.setLength(self.snake.size())
+        self.brain.setSteps(self.snake.steps)
         return self.brain
